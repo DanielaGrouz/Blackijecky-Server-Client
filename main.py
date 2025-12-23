@@ -4,7 +4,7 @@ import threading
 import time
 import random
 import sys
-import traceback  # Added for server-side error logging
+import traceback
 
 # --- PROTOCOL CONSTANTS ---
 MAGIC_COOKIE = 0xabcddcba
@@ -51,16 +51,30 @@ class BlackjackServer:
                 pass
 
     def calculate_value(self, hand):
-        """Calculates hand value."""
-        total = 0
+        """Calculates hand value with correct Ace logic (Soft/Hard)."""
+        val = 0
+        aces = 0
         for rank, _ in hand:
-            total += 10 if rank >= 10 else (11 if rank == 1 else rank)
-        return total
+            if rank == 1:
+                aces += 1
+                val += 11
+            elif rank >= 10:
+                val += 10
+            else:
+                val += rank
+
+        # Convert Aces from 11 to 1 if bust
+        while val > 21 and aces > 0:
+            val -= 10
+            aces -= 1
+        return val
 
     def handle_client(self, conn, addr):
         """Manages the game session."""
         try:
-            conn.settimeout(10)
+            # NOT Busy Waiting: The thread sleeps until data arrives or 600s pass.
+            conn.settimeout(600)
+
             request_data = recv_all(conn, 38)
             if not request_data: return
             magic, m_type, rounds, c_name = struct.unpack('!IbB32s', request_data)
@@ -76,9 +90,9 @@ class BlackjackServer:
                 for card in p_hand + [d_hand[0]]:
                     conn.sendall(struct.pack('!IbB2bB', MAGIC_COOKIE, PAYLOAD_TYPE, 0x0, card[0], 0, card[1]))
 
-                # Player Turn
+                # --- Player Turn Loop ---
                 while self.calculate_value(p_hand) < 21:
-                    # FIX: Read exactly 11 bytes to match client's struct.pack('!IbB5s')
+                    # FIX: Read exactly 11 bytes (Magic 4 + Type 1 + Placeholder 1 + Decision 5)
                     decision_data = recv_all(conn, 11)
                     if not decision_data: break
                     _, _, _, d_raw = struct.unpack('!IbB5s', decision_data)
@@ -87,43 +101,51 @@ class BlackjackServer:
                         p_hand.append(new_c)
                         conn.sendall(struct.pack('!IbB2bB', MAGIC_COOKIE, PAYLOAD_TYPE, 0x0, new_c[0], 0, new_c[1]))
                     else:
-                        break
+                        break  # Player stands
 
-                # Dealer Turn
-                p_sum, d_sum = self.calculate_value(p_hand), self.calculate_value(d_hand)
-                if p_sum <= 21:
-                    # Reveal dealer's hidden card
+                # --- Dealer Turn Logic (Strict Rule Adherence) ---
+                #
+                p_sum = self.calculate_value(p_hand)
+                d_sum = self.calculate_value(d_hand)
+                res = 0x0
+
+                if p_sum > 21:
+                    # RULE: If client busts, they IMMEDIATELY lose.
+                    # Dealer does NOT reveal hidden card. Dealer does NOT draw.
+                    res = 0x2  # Loss
+                else:
+                    # RULE: If client did NOT bust:
+                    # 1. Reveal hidden second card
                     conn.sendall(struct.pack('!IbB2bB', MAGIC_COOKIE, PAYLOAD_TYPE, 0x0, d_hand[1][0], 0, d_hand[1][1]))
 
-                    # Dealer hits until 17
+                    # 2. Dealer draws until 17 or more
                     while d_sum < 17:
                         new_c = (random.randint(1, 13), random.randint(0, 3))
                         d_hand.append(new_c)
                         d_sum = self.calculate_value(d_hand)
                         conn.sendall(struct.pack('!IbB2bB', MAGIC_COOKIE, PAYLOAD_TYPE, 0x0, new_c[0], 0, new_c[1]))
 
-                    # Determine winner
+                    # 3. Determine winner
                     if d_sum > 21:
-                        res = 0x3  # Dealer Bust
+                        res = 0x3  # Dealer Bust -> Win
                     elif p_sum == d_sum:
                         res = 0x1  # Tie
                     elif p_sum > d_sum:
-                        res = 0x3  # Player Win
+                        res = 0x3  # Player Higher -> Win
                     else:
-                        res = 0x2  # Dealer Win
-                else:
-                    res = 0x2  # Player Bust (Loss)
+                        res = 0x2  # Dealer Higher -> Loss
 
-                # Send result
+                # Send Final Result
                 conn.sendall(struct.pack('!IbB2bB', MAGIC_COOKIE, PAYLOAD_TYPE, res, 0, 0, 0))
         except Exception:
-            traceback.print_exc()  # Print server errors instead of crashing silently
+            traceback.print_exc()
         finally:
             conn.close()
 
     def start(self):
         threading.Thread(target=self.broadcast_offers, daemon=True).start()
         while True:
+            # accept() blocks, waiting for connection. This is efficient event-driven IO.
             conn, addr = self.tcp_socket.accept()
             threading.Thread(target=self.handle_client, args=(conn, addr), daemon=True).start()
 
@@ -175,16 +197,16 @@ class BlackjackClient:
                         val = 11 if rank == 1 else (10 if rank >= 10 else rank)
                         suit_sym = ["♥", "♦", "♣", "♠"][suit]
 
-                        # Client-side Logic for display:
                         if cards_received <= 2:
                             p_sum += val
+                            if p_sum > 21 and rank == 1: p_sum -= 10
                             print(f"[YOU] Drawn: {rank}{suit_sym} | Hand: {p_sum}")
-                            if p_sum >= 21: is_player_turn = False  # Auto stand on 21/Bust
+                            if p_sum >= 21: is_player_turn = False
                         elif cards_received == 3:
-                            # 3rd card is ALWAYS the dealer's first visible card
                             print(f"[DEALER] Visible card: {rank}{suit_sym}")
                         elif is_player_turn:
                             p_sum += val
+                            if p_sum > 21 and rank == 1: p_sum -= 10
                             print(f"[YOU] Hit card: {rank}{suit_sym} | Total: {p_sum}")
                             if p_sum >= 21: is_player_turn = False
                         else:
@@ -196,11 +218,9 @@ class BlackjackClient:
                         print(f"Result: {status}");
                         break
 
-                    # Input Logic
                     if cards_received >= 3 and is_player_turn and p_sum < 21:
                         action = input("(H)it or (S)tand? ").lower().strip()
                         decision = "Hittt" if action == 'h' else "Stand"
-                        # This packs exactly 11 bytes (4+1+1+5)
                         tcp_sock.sendall(
                             struct.pack('!IbB5s', MAGIC_COOKIE, PAYLOAD_TYPE, 0, decision.ljust(5).encode()))
                         if action == 's': is_player_turn = False
