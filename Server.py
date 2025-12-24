@@ -12,6 +12,23 @@ PAYLOAD_TYPE = 0x4 # messages client and server during the game
 UDP_PORT = 13122  # hardcoded as per instructions
 BUFFER_SIZE = 1024
 
+def recv_all(sock, n):
+    """
+    Ensures exactly n bytes are read from the stream.
+    Prevents data corruption due to network fragmentation.
+    """
+    data = bytearray()
+    while len(data) < n:
+        try:
+            # read the missing bytes
+            packet = sock.recv(n - len(data))
+            # connection closed
+            if not packet: return None
+            # add missing bytes to data
+            data.extend(packet)
+        except socket.error:
+            return None
+    return data
 
 class BlackjackServer:
     """
@@ -32,7 +49,6 @@ class BlackjackServer:
         # '' -> listen on all network interfaces of the computer.
         # bind to any available port
         self.tcp_socket.bind(('', 0))
-        # tcp_port -> save the allocated port
         self.tcp_port = self.tcp_socket.getsockname()[1]
         # size of the waiting clients queue is 10
         self.tcp_socket.listen(10)
