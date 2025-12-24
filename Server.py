@@ -5,10 +5,10 @@ import time
 import random
 
 # constants
-MAGIC_COOKIE = 0xabcddcba
-OFFER_TYPE = 0x2
-REQUEST_TYPE = 0x3
-PAYLOAD_TYPE = 0x4
+MAGIC_COOKIE = 0xabcddcba # The message is rejected if it doesn’t start with this cookie
+OFFER_TYPE = 0x2 # server to client -> broadcast faze
+REQUEST_TYPE = 0x3 # client to server -> after tcp connection
+PAYLOAD_TYPE = 0x4 # messages client and server during the game
 UDP_PORT = 13122  # hardcoded as per instructions
 BUFFER_SIZE = 1024
 
