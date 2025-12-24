@@ -35,10 +35,10 @@ def recv_all(sock, n):
 
 class BlackjackServer:
     def __init__(self, team_name="pyjack"):
-        # format team name to exactly 32 bytes
+        # encode first, then pad with Null bytes to exactly 32 bytes
         # ljust -> the protocol expects a string of exactly 32 characters,
         # so if we wrote less, the ljust command adds spaces for padding
-        self.team_name = team_name.ljust(32)[:32].encode()
+        self.team_name = team_name.encode().ljust(32, b'\x00')[:32]
 
         # setup TCP socket to listen for incoming connections
         # AF_INET -> use of Ipv4
@@ -227,8 +227,8 @@ class BlackjackServer:
 
 class BlackjackClient:
     def __init__(self, team_name="pyjack"):
-        # ensure team name is exactly 32 bytes
-        self.team_name = team_name.ljust(32)[:32].encode()
+        # encode first, then pad with Null bytes to exactly 32 bytes
+        self.team_name = team_name.encode().ljust(32, b'\x00')[:32]
 
     def start(self):
         """Runs the client connection loop indefinitely."""
