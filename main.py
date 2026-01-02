@@ -145,13 +145,13 @@ class BlackjackServer:
                 while self.calculate_value(p_hand) < 21:
                     # receive decision from the player
                     # Expecting exactly 11 bytes for decision packet
-                    decision_data = recv_all(conn, 11)
+                    decision_data = recv_all(conn, 10)
                     # validation
                     if not decision_data:
                         break
 
                     # Unpack the player decision ("Hittt" or "Stand")
-                    _, _, _, d_raw = struct.unpack('!IbB5s', decision_data)
+                    _, _, d_raw = struct.unpack('!Ib5s', decision_data)
 
                     if b"Hittt" in d_raw:
                         # generate new card
@@ -352,7 +352,7 @@ class BlackjackClient:
                         # so if we wrote less, the ljust command adds spaces for padding
 
                         tcp_sock.sendall(
-                            struct.pack('!IbB5s', MAGIC_COOKIE, PAYLOAD_TYPE, 0, decision.ljust(5).encode()))
+                            struct.pack('!Ib5s', MAGIC_COOKIE, PAYLOAD_TYPE, decision.ljust(5).encode()))
                         if action == 's':
                             is_player_turn = False
 
