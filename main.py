@@ -79,31 +79,26 @@ class BlackjackServer:
                 print(f"Broadcast warning: {e}")
                 time.sleep(1)
 
-
-    def get_card(self):
-        """Generates a random card rank (1-13) and suit (0-3)."""
-        return random.randint(1, 13), random.randint(0, 3)
+    def create_deck(self):
+        """Creates a deck of 52 cards and shuffles it"""
+        deck = [(rank, suit) for rank in range(1, 14) for suit in range(4)]
+        random.shuffle(deck)
+        return deck
 
     def calculate_value(self, hand):
         """
         Maps cards 1-13 to values.
-        Map card (1-13) to value (Ace=11/1, Face=10).
+        Map card (1-13) to value (Ace=11, Face=10).
         """
         val = 0
-        aces = 0
         for rank, _ in hand:
             if rank == 1:
-                aces += 1
                 val += 11 # Ace
             elif rank >= 10:
                 val += 10 # Face cards
             else:
                 val += rank # Numeric cards
 
-        # Soft Hand adjustment
-        while val > 21 and aces > 0:
-            val -= 10
-            aces -= 1
         return val
 
     def handle_client(self, conn, addr):
@@ -129,10 +124,12 @@ class BlackjackServer:
             print(f"New Game: {c_name.decode().strip()} ({rounds} rounds)")
 
             for _ in range(rounds):
-                # Round Setup: Initial deal -> 2 cards to player and
-                # 2 cards for dealer.
-                p_hand = [self.get_card(), self.get_card()]
-                d_hand = [self.get_card(), self.get_card()]
+                # Create a new deck for each round
+                deck = self.create_deck()
+
+                # Initial deal -> 2 cards to player and 2 cards for dealer.
+                p_hand = [deck.pop(), deck.pop()]
+                d_hand = [deck.pop(), deck.pop()]
 
                 # Send initial deal to client (2 player cards, 1 dealer card)
                 for card in p_hand + [d_hand[0]]:
@@ -154,8 +151,8 @@ class BlackjackServer:
                     _, _, d_raw = struct.unpack('!Ib5s', decision_data)
 
                     if b"Hittt" in d_raw:
-                        # generate new card
-                        new_c = self.get_card()
+                        # Draw the next card from the shuffled deck
+                        new_c = deck.pop()
                         # add card to player
                         p_hand.append(new_c)
                         # inform client of the new card
@@ -176,8 +173,8 @@ class BlackjackServer:
 
                     # Dealer hits on < 17
                     while d_sum < 17:
-                        # generate new card
-                        new_c = self.get_card()
+                        # Draw the next card from the shuffled deck
+                        new_c = deck.pop()
                         # add card to dealer
                         d_hand.append(new_c)
                         # calculate new sun of the dealers hand
