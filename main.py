@@ -299,7 +299,7 @@ class BlackjackClient:
             wins = 0
             for r in range(rounds):
                 print(f"\n{'=' * 25}\n   ROUND {r + 1} of {rounds}\n{'=' * 25}")
-                p_sum, is_player_turn, cards_received = 0, True, 0
+                p_sum, d_sum, is_player_turn, cards_received = 0, 0, True, 0
 
                 while True:
                     # listen for update from the server -> a new card or result of the round
@@ -321,18 +321,18 @@ class BlackjackClient:
                         if cards_received <= 2:
                             p_sum += val
                             # Basic client-side soft ace adjustment for display
-                            if p_sum > 21 and rank == 1: p_sum -= 10
                             print(f"[YOU] Drawn: {rank}{suit_sym} | Hand: {p_sum}")
                             if p_sum >= 21: is_player_turn = False
                         elif cards_received == 3:
-                            print(f"[DEALER] Visible card: {rank}{suit_sym}")
+                            d_sum += val
+                            print(f"[DEALER] Visible card: {rank}{suit_sym} | Total: {d_sum}")
                         elif is_player_turn:
                             p_sum += val
-                            if p_sum > 21 and rank == 1: p_sum -= 10
                             print(f"[YOU] Hit card: {rank}{suit_sym} | Total: {p_sum}")
                             if p_sum >= 21: is_player_turn = False
                         else:
-                            print(f"[DEALER] Card revealed: {rank}{suit_sym}")
+                            d_sum += val
+                            print(f"[DEALER] Card revealed: {rank}{suit_sym} | Total: {d_sum}")
 
                     if result != 0x0: # round is over
                         status = {0x3: "WINNER! 🥳", 0x2: "LOSER 💀", 0x1: "TIE 🤝"}.get(result, "")
