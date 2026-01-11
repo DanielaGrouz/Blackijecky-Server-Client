@@ -39,7 +39,7 @@ class BlackjackServer:
     def __init__(self, team_name="pyjack"):
         # encode first, then pad with Null bytes to exactly 32 bytes
         # ljust -> the protocol expects a string of exactly 32 characters,
-        # so if we wrote less, the ljust command adds spaces for padding
+        # so if we wrote less, the ljust command adds nulls for padding
         self.team_name = team_name.encode().ljust(32, b'\x00')[:32]
 
         # setup TCP socket to listen for incoming connections
@@ -260,7 +260,7 @@ class BlackjackServer:
 
 
 class BlackjackClient:
-    def __init__(self, team_name="pyjack"):
+    def __init__(self, team_name="pyjack-client"):
         self.current_rounds = 0
         # encode first, then pad with Null bytes to exactly 32 bytes
         self.team_name = team_name.encode().ljust(32, b'\x00')[:32]
@@ -306,25 +306,44 @@ class BlackjackClient:
                 # UDP_PORT -> The number of the port on which to expect offers
                 udp_sock.bind(('', UDP_PORT))
 
-                # program stops and waits for a UDP message to arrive.
-                # offer_data -> the binary data received in bytes.
-                # addr -> the sender's address (the IP and port of the server that sent the offer).
-                offer_data, addr = udp_sock.recvfrom(BUFFER_SIZE)
-                # convert the received byte sequence into Python variables
-                # '!IbH32s'-> the format string that defines how to read the information
-                # take only the first 39 bytes ([:39]) because this is the expected header size
-                magic, m_type, tcp_port, s_name = struct.unpack('!IbH32s', offer_data[:39])
-                # make sure that the received message is really part of our protocol (and not just network noise)
-                # and that its type is "offer" (OFFER_TYPE).
-                if magic == MAGIC_COOKIE and m_type == OFFER_TYPE:
-                    print(f"Received offer from {addr[0]} ({s_name.decode().strip()})")
-                    # closes the UDP socket. During the game phase we switch to TCP communication,
-                    # so we don't need to listen to UDP right now.
-                    udp_sock.close()
-                    # call another function in the class that is responsible for opening a TCP connection
-                    # to the server (according to the IP and port we received in the message) and managing
-                    # the game itself.
-                    self.play_game(addr[0], tcp_port, self.current_rounds)
+                # loop to continue listening if the received message is not appropriate
+                while True:
+                    # program stops and waits for a UDP message to arrive.
+                    # offer_data -> the binary data received in bytes.
+                    # addr -> the sender's address (the IP and port of the server that sent the offer).
+                    offer_data, addr = udp_sock.recvfrom(BUFFER_SIZE)
+
+                    # minimum length check to prevent unpack crash
+                    if len(offer_data) < 39:
+                        continue
+
+                    # convert the received byte sequence into Python variables
+                    # '!IbH32s'-> the format string that defines how to read the information
+                    # take only the first 39 bytes ([:39]) because this is the expected header size
+                    magic, m_type, tcp_port, s_name = struct.unpack('!IbH32s', offer_data[:39])
+
+                    # make sure that the received message is really part of our protocol (and not just network noise)
+                    # and that its type is "offer" (OFFER_TYPE).
+                    if magic == MAGIC_COOKIE and m_type == OFFER_TYPE:
+                        # server name sanitization (removing NULL bytes)
+                        server_name_str = s_name.decode().strip('\x00').strip()
+                        print(f"Received offer from {addr[0]} ({server_name_str})")
+
+                        # server filtering (to avoid connecting to other people's servers)
+                        if server_name_str != "pyjack":
+                            print(f"Server name '{server_name_str}' does not match, ignoring...")
+                            continue
+
+                        # closes the UDP socket. During the game phase we switch to TCP communication,
+                        # so we don't need to listen to UDP right now.
+                        udp_sock.close()
+
+                        # call another function in the class that is responsible for opening a TCP connection
+                        # to the server (according to the IP and port we received in the message) and managing
+                        # the game itself.
+                        self.play_game(addr[0], tcp_port, self.current_rounds)
+                        break
+
             except Exception as e:
                 print(f"Connection/Game Error: {e}")
             finally:
