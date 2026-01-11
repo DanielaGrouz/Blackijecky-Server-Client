@@ -4,7 +4,6 @@ import threading
 import time
 import random
 import sys
-import traceback
 
 # constants
 MAGIC_COOKIE = 0xabcddcba  # The message is rejected if it does not start with this cookie
