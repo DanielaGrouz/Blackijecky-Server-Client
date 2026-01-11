@@ -58,10 +58,41 @@ class BlackjackServer:
         # size of the waiting clients queue is 15
         self.tcp_socket.listen(15)
 
+    def get_local_ip(self):
+        """
+        Helper to find the actual IP address of the machine's primary network interface.
+        This solves the WSL/Virtual Adapter issue by forcing the OS to reveal which
+        interface it uses for outbound traffic.
+        """
+
+        # AF_INET -> IPv4, SOCK_DGRAM -> UDP
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            # os will decide which network interface (Wi-Fi/Ethernet) would be used to reach the outside world.
+            s.connect(('10.255.255.255', 1))
+            # the local IP address of the interface selected by the os
+            IP = s.getsockname()[0]
+        except Exception:
+            # back to localhost if no external network is available
+            IP = '127.0.0.1'
+        finally:
+            # close the socket
+            s.close()
+        return IP
+
     def broadcast_offers(self):
         """Sends UDP broadcast offers. Sleeps to avoid busy-waiting."""
-        # create UCP socket
+
+        server_ip = self.get_local_ip()
+        # create UDP socket
         udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+        # We bind to the specific IP to force traffic through the correct interface
+        try:
+            udp_socket.bind((server_ip, 0))
+        except:
+            print(f"Warning: Could not bind to {server_ip}, using default.")
+
         # allow the socket to send broadcast messages
         udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         # pack the offer message using network byte order
