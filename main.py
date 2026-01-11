@@ -407,11 +407,10 @@ class BlackjackClient:
                         while action not in ['h', 's']:
                             action = input("(H)it or (S)tand? ").lower().strip()
 
-                        decision = "Hit" if action == 'h' else "Stand"
+                        decision = "Hittt" if action == 'h' else "Stand"
                         # send decision to server
                         # ljust -> the protocol expects a string of exactly 5 characters,
                         # so if we wrote less, the ljust command adds spaces for padding
-
                         tcp_sock.sendall(
                             struct.pack('!Ib5s', MAGIC_COOKIE, PAYLOAD_TYPE, decision.ljust(5).encode()))
                         if action == 's':
